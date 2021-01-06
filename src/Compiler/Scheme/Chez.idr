@@ -371,6 +371,65 @@ startChezWinSh chez appdir target = unlines
     , "\"$CHEZ\" --script \"$(dirname \"$DIR\")/" ++ target ++ "\" \"$@\""
     ]
 
+%foreign "scheme,chez:(lambda (x) (with-input-from-string x (lambda () (eval (read)))))"
+prim__evalChezString : String -> PrimIO AnyPtr
+
+evalChezString : String -> (a : Type) -> IO a
+evalChezString string _ = primIO $ believe_me (prim__evalChezString string)
+
+schHeaderEval : String -> List String -> String
+schHeaderEval chez libs
+  = "(begin\n" ++
+    "(import (chezscheme))\n" ++
+    "(case (machine-type)\n" ++
+    "  [(i3le ti3le a6le ta6le) (load-shared-object \"libc.so.6\")]\n" ++
+    "  [(i3osx ti3osx a6osx ta6osx) (load-shared-object \"libc.dylib\")]\n" ++
+    "  [(i3nt ti3nt a6nt ta6nt) (load-shared-object \"msvcrt.dll\")" ++
+    "                           (load-shared-object \"ws2_32.dll\")]\n" ++
+    "  [else (load-shared-object \"libc.so\")])\n\n" ++
+    showSep "\n" (map (\x => "(load-shared-object \"" ++ escapeString x ++ "\")") libs) ++ "\n\n" ++
+    "(let ()\n"
+
+schFooterEval : String
+schFooterEval = ")\n)\n" -- "(collect 4)\n(blodwen-run-finalisers)" ++
+
+
+evalChezExpr : Ref Ctxt Defs -> String -> ClosedTerm -> (a : Type) -> Core a
+evalChezExpr c appdir tm _
+    = do ds <- getDirectives Chez
+         libs <- findLibs ds
+         traverse_ copyLib libs
+         cdata <- getCompileData Cases tm
+         let ndefs = namedDefs cdata
+         let ctm = forget (mainExpr cdata)
+
+         defs <- get Ctxt
+         l <- newRef {t = List String} Loaded ["libc", "libc 6"]
+         s <- newRef {t = List String} Structs []
+         fgndefs <- traverse (getFgnCall appdir) ndefs
+         compdefs <- traverse (getScheme chezExtPrim chezString) ndefs
+         let code = fastAppend (map snd fgndefs ++ compdefs)
+         main <- schExp chezExtPrim chezString 0 ctm
+         chez <- coreLift findChez
+         support <- readDataFile "chez/support.ss"
+         extraRuntime <- getExtraRuntime ds
+         let scm = schHeaderEval chez (map snd libs) ++
+                   support ++ extraRuntime ++ code ++
+                   concat (map fst fgndefs) ++
+                   --"(collect-request-handler (lambda () (collect) (blodwen-run-finalisers)))\n" ++
+                   main ++ schFooterEval
+         --coreLift $ putStrLn scm
+         coreLift $ evalChezString scm _
+
+export
+myEval : {auto c : Ref Ctxt Defs} ->
+         ClosedTerm -> (a : Type) -> Core a
+myEval {c} tm _
+    = do d <- getDirs
+         let tmpDir = execBuildDir d
+         ensureDirectoryExists tmpDir
+         evalChezExpr c tmpDir tm _
+
 ||| Compile a TT expression to Chez Scheme
 compileToSS : Ref Ctxt Defs ->
               String -> ClosedTerm -> (outfile : String) -> Core ()

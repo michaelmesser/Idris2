@@ -545,13 +545,16 @@ execExp : {auto c : Ref Ctxt Defs} ->
           {auto m : Ref MD Metadata} ->
           {auto o : Ref ROpts REPLOpts} ->
           PTerm -> Core REPLResult
-execExp ctm
+execExp {c} ctm
     = do ttimp <- desugar AnyExpr [] (PApp replFC (PRef replFC (UN "unsafePerformIO")) ctm)
          inidx <- resolveName (UN "[input]")
          (tm, ty) <- elabTerm inidx InExpr [] (MkNested [])
                                  [] ttimp Nothing
          tm_erased <- linearCheck replFC linear True [] tm
-         execute !findCG tm_erased
+         
+         myEval tm_erased (IO ())
+         -- HERE
+         --execute !findCG tm_erased
          pure $ Executed ctm
 
 

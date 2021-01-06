@@ -416,9 +416,12 @@ wrapError fe (MkCore prog)
 -- This would be better if we restrict it to a limited set of IO operations
 export
 %inline
-coreLift : IO a -> Core a
+coreLift : (1 _ : IO a) -> Core a
+coreLift op = MkCore (io_bind op (\op' => pure (Right op')))
+{-
 coreLift op = MkCore (do op' <- op
                          pure (Right op'))
+-}
 
 {- Monad, Applicative, Traversable are specialised by hand for Core.
 In theory, this shouldn't be necessary, but it turns out that Idris 1 doesn't

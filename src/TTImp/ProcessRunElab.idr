@@ -14,6 +14,7 @@ import TTImp.Elab
 import TTImp.Elab.Check
 import TTImp.Elab.RunElab
 import TTImp.TTImp
+import Compiler.Scheme.Chez
 
 %default covering
 
@@ -32,7 +33,8 @@ processRunElab eopts nest env fc tm
          let n = NS reflectionNS (UN "Elab")
          unit <- getCon fc defs (builtin "Unit")
          exp <- appCon fc defs n [unit]
-
          stm <- checkTerm tidx InExpr eopts nest env tm (gnf env exp)
-         elabScript fc nest env !(nfOpts withAll defs env stm) Nothing
+         elab <- myEval (abstractEnv fc env stm) (Elab ())
+         runElab fc env Nothing elab
+         --elabScript fc nest env !(nfOpts withAll defs env stm) Nothing
          pure ()

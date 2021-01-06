@@ -9,25 +9,26 @@ import public Language.Reflection.TTImp
 export
 data Elab : Type -> Type where
      Pure : a -> Elab a
+     RunIO : (1 _ : IO a) -> Elab a
      Bind : Elab a -> (a -> Elab b) -> Elab b
      Fail : String -> Elab a
 
      LogMsg : String -> Nat -> String -> Elab ()
-     LogTerm : String -> Nat -> String -> TTImp -> Elab ()
+     LogTerm : String -> Nat -> String -> RawImp -> Elab ()
 
-     -- Elaborate a TTImp term to a concrete value
-     Check : {expected : Type} -> TTImp -> Elab expected
-     -- Quote a concrete expression back to a TTImp
-     Quote : val -> Elab TTImp
+     -- Elaborate a RawImp term to a concrete value
+     -- Check : {expected : Type} -> RawImp -> Elab expected
+     -- Quote a concrete expression back to a RawImp
+     -- Quote : val -> Elab RawImp
 
      -- Elaborate under a lambda
-     Lambda : (0 x : Type) ->
-              {0 ty : x -> Type} ->
-              ((val : x) -> Elab (ty val)) -> Elab ((val : x) -> (ty val))
+     --Lambda : (0 x : Type) ->
+     --         {0 ty : x -> Type} ->
+     --         ((val : x) -> Elab (ty val)) -> Elab ((val : x) -> (ty val))
 
      -- Get the current goal type, if known
      -- (it might need to be inferred from the solution)
-     Goal : Elab (Maybe TTImp)
+     Goal : Elab (Maybe RawImp)
      -- Get the names of local variables in scope
      LocalVars : Elab (List Name)
      -- Generate a new unique name, based on the given string
@@ -37,13 +38,13 @@ data Elab : Type -> Type where
      -- Get the types of every name which matches.
      -- There may be ambiguities - returns a list of fully explicit names
      -- and their types. If there's no results, the name is undefined.
-     GetType : Name -> Elab (List (Name, TTImp))
+     GetType : Name -> Elab (List (Name, RawImp))
      -- Get the type of a local variable
-     GetLocalType : Name -> Elab TTImp
+     GetLocalType : Name -> Elab RawImp
      -- Get the constructors of a data type. The name must be fully resolved.
      GetCons : Name -> Elab (List Name)
      -- Check a group of top level declarations
-     Declare : List Decl -> Elab ()
+     Declare : List ImpDecl -> Elab ()
 
 mutual
   export
@@ -62,6 +63,10 @@ mutual
   Monad Elab where
     (>>=) = Bind
 
+export
+HasIO Elab where
+  liftIO x = RunIO x
+
 ||| Report an error in elaboration
 export
 fail : String -> Elab a
@@ -74,7 +79,7 @@ logMsg = LogMsg
 
 ||| Write a log message and a rendered term, if the log level is >= the given level
 export
-logTerm : String -> Nat -> String -> TTImp -> Elab ()
+logTerm : String -> Nat -> String -> RawImp -> Elab ()
 logTerm = LogTerm
 
 ||| Log the current goal type, if the log level is >= the given level
@@ -86,15 +91,16 @@ logGoal str n msg
               Nothing => pure ()
               Just t => logTerm str n msg t
 
-||| Check that some TTImp syntax has the expected type
+{- 
+||| Check that some RawImp syntax has the expected type
 ||| Returns the type checked value
 export
-check : {expected : Type} -> TTImp -> Elab expected
+check : {expected : Type} -> RawImp -> Elab expected
 check = Check
 
-||| Return TTImp syntax of a given value
+||| Return RawImp syntax of a given value
 export
-quote : val -> Elab TTImp
+quote : val -> Elab RawImp
 quote = Quote
 
 ||| Build a lambda expression
@@ -103,10 +109,11 @@ lambda : (0 x : Type) ->
          {0 ty : x -> Type} ->
          ((val : x) -> Elab (ty val)) -> Elab ((val : x) -> (ty val))
 lambda = Lambda
+-}
 
 ||| Get the goal type of the current elaboration
 export
-goal : Elab (Maybe TTImp)
+goal : Elab (Maybe RawImp)
 goal = Goal
 
 ||| Get the names of the local variables in scope
@@ -126,12 +133,12 @@ inCurrentNS = InCurrentNS
 
 ||| Given a possibly ambiguous name, get all the matching names and their types
 export
-getType : Name -> Elab (List (Name, TTImp))
+getType : Name -> Elab (List (Name, RawImp))
 getType = GetType
 
 ||| Get the type of a local variable
 export
-getLocalType : Name -> Elab TTImp
+getLocalType : Name -> Elab RawImp
 getLocalType = GetLocalType
 
 ||| Get the constructors of a fully qualified data type name
@@ -141,5 +148,5 @@ getCons = GetCons
 
 ||| Make some top level declarations
 export
-declare : List Decl -> Elab ()
+declare : List ImpDecl -> Elab ()
 declare = Declare

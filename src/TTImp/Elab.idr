@@ -19,6 +19,7 @@ import TTImp.Unelab
 import Data.IntMap
 import Data.List
 import Data.NameMap
+import TTImp.Elab.RunElab
 
 %default covering
 
@@ -278,3 +279,5 @@ checkTerm : {vars : _} ->
             Core (Term vars)
 checkTerm defining mode opts nest env tm ty
     = checkTermSub defining mode opts nest env env SubRefl tm ty
+
+TTImp.Elab.RunElab.checkTermL = checkTerm

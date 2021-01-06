@@ -19,7 +19,96 @@ import TTImp.Reflect
 import TTImp.TTImp
 import TTImp.Unelab
 import TTImp.Utils
+import Compiler.Scheme.Chez
 
+export
+data Elab : Type -> Type where
+     Pure : a -> Elab a
+     RunIO : (1 _ : IO a) -> Elab a
+     Bind : Elab a -> (a -> Elab b) -> Elab b
+     Fail : String -> Elab a
+
+     LogMsg : String -> Nat -> String -> Elab ()
+     LogTerm : String -> Nat -> String -> RawImp -> Elab ()
+
+     -- Elaborate a RawImp term to a concrete value
+     -- Check : {expected : Type} -> RawImp -> Elab expected
+     -- Quote a concrete expression back to a RawImp
+     -- Quote : val -> Elab RawImp
+
+     -- Elaborate under a lambda
+     --Lambda : (0 x : Type) ->
+     --         {0 ty : x -> Type} ->
+     --         ((val : x) -> Elab (ty val)) -> Elab ((val : x) -> (ty val))
+
+     -- Get the current goal type, if known
+     -- (it might need to be inferred from the solution)
+     Goal : Elab (Maybe RawImp)
+     -- Get the names of local variables in scope
+     LocalVars : Elab (List Name)
+     -- Generate a new unique name, based on the given string
+     GenSym : String -> Elab Name
+     -- Put a name in the current namespace
+     InCurrentNS : Name -> Elab Name
+     -- Get the types of every name which matches.
+     -- There may be ambiguities - returns a list of fully explicit names
+     -- and their types. If there's no results, the name is undefined.
+     GetType : Name -> Elab (List (Name, RawImp))
+     -- Get the type of a local variable
+     GetLocalType : Name -> Elab RawImp
+     -- Get the constructors of a data type. The name must be fully resolved.
+     GetCons : Name -> Elab (List Name)
+     -- Check a group of top level declarations
+     Declare : List ImpDecl -> Elab ()
+
+export
+runElab : {vars : _} ->
+          {auto c : Ref Ctxt Defs} ->
+          {auto m : Ref MD Metadata} ->
+          {auto u : Ref UST UState} ->
+          FC ->
+          Env Term vars ->
+          Maybe (Glued vars) ->
+          Elab a ->
+          Core a
+runElab _ _ _ (Pure val) = pure val
+runElab _ _ _ (RunIO act) = coreLift act
+runElab fc env exp (Bind x f) = runElab fc env exp x >>= (runElab fc env exp . f)
+runElab fc _ _ (Fail msg) = throw (GenericMsg fc ("Error during reflection: " ++ msg))
+runElab _ _ _ (LogMsg topic verb str) = logC topic verb (pure str)
+runElab _ _ _ (LogTerm topic verb str tm) = logC topic verb $ pure $ str ++ ": " ++ show tm
+--runElab fc _ _ (Check _) = throw (GenericMsg fc "Check not available")
+--runElab fc _ _ (Quote _) = throw (GenericMsg fc "Quote not available")
+--runElab fc _ _ (Lambda _ _) = throw (GenericMsg fc "Lambda not available")
+runElab _ env exp Goal = do
+    let Just gty = exp | Nothing => pure Nothing
+    ty <- getTerm gty
+    pure $ Just $ !(unelabUniqueBinders env ty)
+runElab _ _ _ LocalVars = pure vars
+runElab _ _ _ (GenSym str) = genVarName str
+runElab _ _ _ (InCurrentNS n) = inCurrentNS n
+runElab _ _ _ (GetType n) = do
+    defs <- get Ctxt
+    res <- lookupTyName n (gamma defs)
+    traverse unelabType res
+    where
+        unelabType : (Name, Int, ClosedTerm) -> Core (Name, RawImp)
+        unelabType (n, _, ty) = pure (n, !(unelabUniqueBinders [] ty))
+runElab fc env _ (GetLocalType n) = do
+    case defined n env of
+        Just (MkIsDefined rigb lv) => do
+            let binder = getBinder lv env
+            let bty = binderType binder
+            unelabUniqueBinders env bty
+        _ => throw (GenericMsg fc (show n ++ " is not a local variable"))
+runElab fc _ _ (GetCons cn) = do
+    defs <- get Ctxt
+    Just (TCon _ _ _ _ _ _ cons _) <- lookupDefExact cn (gamma defs)
+        | _ => throw (GenericMsg fc (show cn ++ " is not a type"))
+    pure cons
+runElab _ _ _ (Declare decls) = traverse_ (processDecl [] (MkNested []) []) decls
+
+{-
 export
 elabScript : {vars : _} ->
              {auto c : Ref Ctxt Defs} ->
@@ -166,6 +255,17 @@ elabScript fc nest env script exp
     = do defs <- get Ctxt
          empty <- clearDefs defs
          throw (BadRunElab fc env !(quote empty env script))
+-}
+
+export
+checkTermL : {vars : _} ->
+            {auto c : Ref Ctxt Defs} ->
+            {auto m : Ref MD Metadata} ->
+            {auto u : Ref UST UState} ->
+            Int -> ElabMode -> List ElabOpt ->
+            NestedNames vars -> Env Term vars ->
+            RawImp -> Glued vars ->
+            Core (Term vars)
 
 export
 checkRunElab : {vars : _} ->
@@ -183,16 +283,21 @@ checkRunElab rig elabinfo nest env fc script exp
          unless (isExtension ElabReflection defs) $
              throw (GenericMsg fc "%language ElabReflection not enabled")
          let n = NS reflectionNS (UN "Elab")
-         let ttn = reflectiontt "TT"
-         elabtt <- appCon fc defs n [expected]
-         (stm, sty) <- runDelays 0 $
-                           check rig elabinfo nest env script (Just (gnf env elabtt))
+         ttn <- getCon fc defs (NS reflectionTTImpNS (UN "TTImp"))
+         elabtt <- appCon fc defs n [ttn]
+         --(stm, sty) <- runDelays 0 $
+         --                  check rig elabinfo nest env script (Just (gnf env elabtt))
+         tidx <- resolveName (UN "[elaborator script]")
+         stm <- checkTermL tidx InExpr [] nest env script (gnf env elabtt)
          defs <- get Ctxt -- checking might have resolved some holes
-         ntm <- elabScript fc nest env
-                           !(nfOpts withAll defs env stm) (Just (gnf env expected))
-         defs <- get Ctxt -- might have updated as part of the script
-         empty <- clearDefs defs
-         pure (!(quote empty env ntm), gnf env expected)
+         elab <- myEval (abstractEnv fc env stm) (Elab RawImp)
+         ttimp <- runElab fc env (Just (gnf env expected)) elab
+         check rig elabinfo nest env ttimp (Just (gnf env expected))
+         --ntm <- elabScript fc nest env
+         --                  !(nfOpts withAll defs env stm) (Just (gnf env expected))
+         --defs <- get Ctxt -- might have updated as part of the script
+         --empty <- clearDefs defs
+         --pure (!(quote empty env ntm), gnf env expected)
   where
     mkExpected : Maybe (Glued vars) -> Core (Term vars)
     mkExpected (Just ty) = pure !(getTerm ty)

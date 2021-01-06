@@ -1,15 +1,21 @@
 module Language.Reflection.TT
 
 import public Data.List
+import Data.Strings
+import Data.IORef
 
 public export
 FilePos : Type
 FilePos = (Int, Int)
 
 public export
-data FC : Type where
-     MkFC : String -> FilePos -> FilePos -> FC
-     EmptyFC : FC
+FileName : Type
+FileName = String
+
+||| A file context is a filename together with starting and ending positions
+public export
+data FC = MkFC FileName FilePos FilePos
+        | EmptyFC
 
 public export
 emptyFC : FC
@@ -46,6 +52,29 @@ data Constant
     | DoubleType
     | WorldType
 
+export
+Show Constant where
+  show (I x) = show x
+  show (BI x) = show x
+  show (B8 x) = show x
+  show (B16 x) = show x
+  show (B32 x) = show x
+  show (B64 x) = show x
+  show (Str x) = show x
+  show (Ch x) = show x
+  show (Db x) = show x
+  show WorldVal = "%MkWorld"
+  show IntType = "Int"
+  show IntegerType = "Integer"
+  show Bits8Type = "Bits8"
+  show Bits16Type = "Bits16"
+  show Bits32Type = "Bits32"
+  show Bits64Type = "Bits64"
+  show StringType = "String"
+  show CharType = "Char"
+  show DoubleType = "Double"
+  show WorldType = "%World"
+
 public export
 data Namespace = MkNS (List String) -- namespace, stored in reverse order
 
@@ -60,25 +89,89 @@ Show Namespace where
   show (MkNS ns) = showSep "." (reverse ns)
 
 public export
-data Name = UN String -- user defined name
-          | MN String Int -- machine generated name
-          | NS Namespace Name -- name in a namespace
-          | DN String Name -- a name and how to display it
-          | RF String -- record field name
+data UseSide = UseLeft | UseRight
+
+public export
+data DotReason = NonLinearVar
+               | VarApplied
+               | NotConstructor
+               | ErasedArg
+               | UserDotted
+               | UnknownDot
+
+export
+data LogLevel : Type where
+  MkLogLevel : List String -> Nat -> LogLevel
+
+export
+Show LogLevel where
+
+  show (MkLogLevel ps n) = case ps of
+    [] => show n
+    _  => fastConcat (intersperse "." ps) ++ ":" ++ show n
+
+public export
+data Name : Type where
+     NS : Namespace -> Name -> Name -- in a namespace
+     UN : String -> Name -- user defined name
+     MN : String -> Int -> Name -- machine generated name
+     PV : Name -> Int -> Name -- pattern variable name; int is the resolved function id
+     DN : String -> Name -> Name -- a name and how to display it
+     RF : String -> Name  -- record field name
+     Nested : (Int, Int) -> Name -> Name -- nested function name
+     CaseBlock : String -> Int -> Name -- case block nested in (resolved) name
+     WithBlock : String -> Int -> Name -- with block nested in (resolved) name
+     Resolved : Int -> Name -- resolved, index into context
 
 export
 Show Name where
+  show (NS ns n@(RF _)) = show ns ++ ".(" ++ show n ++ ")"
   show (NS ns n) = show ns ++ "." ++ show n
   show (UN x) = x
   show (MN x y) = "{" ++ x ++ ":" ++ show y ++ "}"
-  show (DN str y) = str
+  show (PV n d) = "{P:" ++ show n ++ ":" ++ show d ++ "}"
+  show (DN str n) = str
   show (RF n) = "." ++ n
+  show (Nested (outer, idx) inner)
+      = show outer ++ ":" ++ show idx ++ ":" ++ show inner
+  show (CaseBlock outer i) = "case block in " ++ outer
+  show (WithBlock outer i) = "with block in " ++ outer
+  show (Resolved x) = "$resolved" ++ show x
+
+export
+data ZeroOneOmega = Rig0 | Rig1 | RigW
 
 public export
-data Count = M0 | M1 | MW
+M0 : ZeroOneOmega
+M0 = Rig0
 
 public export
-data PiInfo t = ImplicitArg | ExplicitArg | AutoImplicit | DefImplicit t
+M1 : ZeroOneOmega
+M1 = Rig1
+
+public export
+MW : ZeroOneOmega
+MW = RigW
+
+export
+Show ZeroOneOmega where
+  show Rig0 = "Rig0"
+  show Rig1 = "Rig1"
+  show RigW = "RigW"
+
+public export
+RigCount : Type
+RigCount = ZeroOneOmega
+ 
+public export
+data PiInfo t = Implicit | Explicit | AutoImplicit | DefImplicit t
+
+export
+Show t => Show (PiInfo t) where
+  show Implicit = "Implicit"
+  show Explicit = "Explicit"
+  show AutoImplicit = "AutoImplicit"
+  show (DefImplicit t) = "DefImplicit " ++ show t
 
 public export
 data IsVar : Name -> Nat -> List Name -> Type where
@@ -117,3 +210,9 @@ data TotalReq = Total | CoveringOnly | PartialOK
 
 public export
 data Visibility = Private | Export | Public
+
+export
+Show Visibility where
+  show Private = "private"
+  show Export = "export"
+  show Public = "public export"
