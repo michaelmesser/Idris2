@@ -204,7 +204,7 @@ reservedSymbols : List String
 reservedSymbols
     = symbols ++
       ["%", "\\", ":", "=", ":=", "|", "|||", "<-", "->", "=>", "?", "!",
-       "&", "**", "..", "~"]
+       "&", "**", "..", "~", "~!"]
 
 fromBinLit : String -> Integer
 fromBinLit str

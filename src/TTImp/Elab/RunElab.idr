@@ -20,6 +20,7 @@ import TTImp.TTImp
 import TTImp.Unelab
 import TTImp.Utils
 import Compiler.Scheme.Chez
+import Compiler.Inline
 
 export
 data Elab : Type -> Type where
@@ -283,14 +284,15 @@ checkRunElab rig elabinfo nest env fc script exp
          unless (isExtension ElabReflection defs) $
              throw (GenericMsg fc "%language ElabReflection not enabled")
          let n = NS reflectionNS (UN "Elab")
-         ttn <- getCon fc defs (NS reflectionTTImpNS (UN "TTImp"))
-         elabtt <- appCon fc defs n [ttn]
+         ttn <- getCon {vars=[]} fc defs (NS reflectionTTImpNS (UN "TTImp"))
+         elabtt <- appCon {vars=[]} fc defs n [ttn]
          --(stm, sty) <- runDelays 0 $
          --                  check rig elabinfo nest env script (Just (gnf env elabtt))
          tidx <- resolveName (UN "[elaborator script]")
-         stm <- checkTermL tidx InExpr [] nest env script (gnf env elabtt)
+         stm <- checkTermL {vars=[]} tidx InExpr [] (MkNested []) [] script (gnf {vars=[]} [] elabtt)
          defs <- get Ctxt -- checking might have resolved some holes
-         elab <- myEval (abstractEnv fc env stm) (Elab RawImp)
+         compileAndInlineAll
+         elab <- myEval stm (Elab RawImp) -- abstract env
          ttimp <- runElab fc env (Just (gnf env expected)) elab
          check rig elabinfo nest env ttimp (Just (gnf env expected))
          --ntm <- elabScript fc nest env

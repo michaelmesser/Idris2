@@ -396,6 +396,8 @@ mutual
            pure (PQuoteDecl (boundToFC fname b) (collectDefs (concat b.val)))
     <|> do b <- bounds (symbol "~" *> simpleExpr fname indents)
            pure (PUnquote (boundToFC fname b) b.val)
+    <|> do b <- bounds (symbol "~!" *> simpleExpr fname indents)
+           pure (PUnquote (boundToFC fname b) (PBang (boundToFC fname b) b.val))
     <|> do start <- bounds (symbol "(")
            bracketedExpr fname start indents
     <|> do start <- bounds (symbol "[")

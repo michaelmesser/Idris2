@@ -62,6 +62,8 @@ import Text.PrettyPrint.Prettyprinter.Render.Terminal
 import System
 import System.File
 
+import Compiler.Inline
+
 %default covering
 
 showInfo : {auto c : Ref Ctxt Defs} ->
@@ -552,6 +554,7 @@ execExp {c} ctm
                                  [] ttimp Nothing
          tm_erased <- linearCheck replFC linear True [] tm
          
+         compileAndInlineAll
          myEval tm_erased (IO ())
          -- HERE
          --execute !findCG tm_erased
