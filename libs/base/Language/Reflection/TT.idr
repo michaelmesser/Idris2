@@ -166,6 +166,14 @@ RigCount = ZeroOneOmega
 public export
 data PiInfo t = Implicit | Explicit | AutoImplicit | DefImplicit t
 
+public export
+ImplicitArg : PiInfo t
+ImplicitArg = Implicit
+
+public export
+ExplicitArg : PiInfo t
+ExplicitArg = Explicit
+
 export
 Show t => Show (PiInfo t) where
   show Implicit = "Implicit"

@@ -4,7 +4,7 @@ LOG 0: Type: (%pi Rig0 Implicit (Just a) %type (%pi Rig1 Explicit (Just xs) (Pre
 LOG 0: Name: Prelude.Types.Strings.++
 LOG 0: Type: (%pi Rig1 Explicit (Just x) String (%pi Rig1 Explicit (Just y) String String))
 LOG 0: Resolved name: Prelude.Types.Nat
-LOG 0: Constructors: [Prelude.Types.Z, Prelude.Types.S]
+LOG 0: Constructors: [$resolved805, $resolved808]
 Error: While processing right hand side of dummy1. Error during reflection: Not really trying
 
 refprims.idr:43:10--43:27

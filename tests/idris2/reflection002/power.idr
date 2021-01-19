@@ -6,20 +6,15 @@ powerFn : Nat -> TTImp
 powerFn Z = `(const 1)
 powerFn (S k) = `(\x => mult x (~(powerFn k) x))
 
--- Note: this example doesn't quite do what we want yet. Ideally, we'd find
--- a way to block reduction under the 'pure' while running the script
-powerFn' : Nat -> Elab (Nat -> Nat)
-powerFn' Z = pure (const 1)
-powerFn' (S k)
-    = do powerk <- powerFn' k
-         pure (\x => mult (powerk x) x)
+powerFn' : Nat -> Nat -> Nat -- This doesn't need elab at all, right?
+powerFn' Z = const 1
+powerFn' (S k) = (\x => mult (powerFn' k x) x)
 
 %macro
-power : Nat -> Elab (Nat -> Nat)
-power n = check (powerFn n)
+power : Nat -> Elab TTImp
+power n = pure (powerFn n)
 
-%macro
-power' : Nat -> Elab (Nat -> Nat)
+power' : Nat -> Nat -> Nat
 power' n = powerFn' n
 
 cube : Nat -> Nat

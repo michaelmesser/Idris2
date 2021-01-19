@@ -242,6 +242,14 @@ mutual
                      (fields : List IField) ->
                      ImpRecord
 
+  public export
+  MkRecord : FC -> (n : Name) ->
+                     (params : List (Name, RigCount, PiInfo RawImp, RawImp)) ->
+                     (conName : Name) ->
+                     (fields : List IField) ->
+                     ImpRecord
+  MkRecord = MkImpRecord
+
   export
   Show IField where
     show (MkIField _ c Explicit n ty) = show n ++ " : " ++ show ty

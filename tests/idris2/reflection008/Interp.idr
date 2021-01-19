@@ -31,30 +31,28 @@ data Env : Vect n Ty -> Type where
      (::) : (x : interpTy a) -> Env xs -> Env (a :: xs)
 
 -- Find a value in an environment
-lookupEnv : HasType i t gam -> Env gam -> Elab (interpTy t)
-lookupEnv Stop (x :: xs) = pure x
+lookupEnv : HasType i t gam -> Env gam -> interpTy t -- Doesn't need Elab
+lookupEnv Stop (x :: xs) = x
 lookupEnv (Pop var) (x :: env) = lookupEnv var env
 
-interp : Env gam -> Lang gam t -> Elab (interpTy t)
+interp : Env gam -> Lang gam t -> interpTy t -- Doesn't need Elab
 interp env (Var x)
-    = do res <- lookupEnv x env
-         pure res
-interp env (Val x) = pure x
+    = lookupEnv x env
+interp env (Val x) = x
 interp env (Lam scope)
-    = lambda _ (\val => interp (val :: env) scope)
+    = (\val => interp (val :: env) scope)
 interp env (App f a)
-    = interp env f <*> interp env a
-interp env (Op f x y) = f <$> interp env x <*> interp env y
+    = (interp env f) (interp env a)
+interp env (Op f x y) = f (interp env x) (interp env y)
 
-%macro
-eval : Env gam -> Lang gam t -> Elab (interpTy t)
+eval : Env gam -> Lang gam t -> interpTy t -- Doesn't need Elab
 eval = interp
 
 testAdd : Lang gam (Arrow (Base Nat) (Arrow (Base Nat) (Base Nat)))
 testAdd = Lam (Lam (Op plus (Var Stop) (Var (Pop Stop))))
 
 evalAdd : Nat -> Nat -> Nat
-evalAdd x y =let add = eval [] testAdd in add x y
+evalAdd x y = let add = eval [] testAdd in add x y
 
 testBlock : Lang gam (Base Nat)
 testBlock = Op {a=Base Nat} {b=Base Nat} plus (Val 3) (Val 4)
